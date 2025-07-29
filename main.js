@@ -1,6 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 const zlib = require('zlib');
+const crypto = require('crypto');
+
 // You can use print statements as follows for debugging, they'll be visible when running tests.
 console.error("Logs from your program will appear here!");
 
@@ -13,7 +15,10 @@ console.error("Logs from your program will appear here!");
      break;
    case "cat-file":
      catFile(process.argv[3] , process.argv[4]); 
-     break;   
+     break;
+   case "hash-object":
+     hashObject(process.argv[3] , process.argv[4]);     
+     break;      
    default:
      throw new Error(`Unknown command ${command}`);
  }
@@ -29,12 +34,7 @@ console.error("Logs from your program will appear here!");
 
  function catFile(option , obName)
      {
-          let gitPath = path.join(process.cwd()  , ".git")
-
-          
-
-          if(!fs.existsSync(gitPath) || !fs.lstatSync(gitPath).isDirectory())
-               throw new Error("there is no git repo , try to run myGit init first !")
+          gitIsExist()
 
           switch(option)
                {
@@ -46,7 +46,20 @@ console.error("Logs from your program will appear here!");
                          throw new Error(`unkonwn option : ${option}`)
                }     
      }    
+ function hashObject(option , fileName)
+     {
+          gitIsExist()
 
+          switch(option)
+               {
+                    case "-w" :
+                         hashObjectWrite(fileName)
+                    break ; 
+
+                    default : 
+                         throw new Error(`unkonwn option : ${option}`)
+               }
+     }
      function ObDecompress(obName)
           {
                let subDir = obName.slice(0 , 2)
@@ -61,6 +74,12 @@ console.error("Logs from your program will appear here!");
 
           }
 
+     function fileCompress(fileContent)
+          {
+               const compressedContent = zlib.deflateSync(fileContent); 
+               return compressedContent
+          }
+
   function catFilePrint(obName)
           {
                let decompressed = ObDecompress(obName)
@@ -70,4 +89,38 @@ console.error("Logs from your program will appear here!");
                let content = decompressed.slice(nullByteIndex + 1).toString()
                
                process.stdout.write(content)
+  
           }
+
+  function hashObjectWrite(fileName)
+          {
+               const filePath = path.join(process.cwd() , fileName)
+               
+               const content   = fs.readFileSync(filePath)
+
+               const newContent = Buffer.concat([
+                    Buffer.from("blob "+content.length+"\0") , 
+                    content
+               ])
+               
+               const newFullFileName = crypto.createHash('sha1')
+                                        .update(newContent)
+                                        .digest('hex')
+
+               const dir = newFullFileName.slice(0 , 2)
+               const newFileName = newFullFileName.slice(2)
+               process.stdout.write(dir+newFileName)
+               fs.mkdirSync(path.join(process.cwd(), ".git", "objects" , dir), { recursive: true });                         
+               fs.writeFileSync(path.join(process.cwd() , ".git" , "objects" , dir , newFileName) , fileCompress(newContent))
+
+          }   
+
+   function gitIsExist()
+          {
+               let gitPath = path.join(process.cwd()  , ".git")
+
+          
+
+               if(!fs.existsSync(gitPath) || !fs.lstatSync(gitPath).isDirectory())
+                    throw new Error("there is no git repo , try to run myGit init first !")
+          }       
