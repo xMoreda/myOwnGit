@@ -18,7 +18,10 @@ console.error("Logs from your program will appear here!");
      break;
    case "hash-object":
      hashObject(process.argv[3] , process.argv[4]);     
-     break;      
+     break;    
+   case "ls-tree":
+     lsTree(process.argv[3] , process.argv[4])
+     break;
    default:
      throw new Error(`Unknown command ${command}`);
  }
@@ -45,7 +48,21 @@ console.error("Logs from your program will appear here!");
                     default:
                          throw new Error(`unkonwn option : ${option}`)
                }     
-     }    
+     }
+  function lsTree(option , hashName)
+     {
+          gitIsExist()
+
+          switch(option)
+               {
+                    case "--name-only":
+                         lsTreeNameOnly(hashName) 
+                    break ; 
+                    
+                    default:
+                         lsTree(hashName)
+               }
+     }       
  function hashObject(option , fileName)
      {
           gitIsExist()
@@ -114,7 +131,62 @@ console.error("Logs from your program will appear here!");
                fs.writeFileSync(path.join(process.cwd() , ".git" , "objects" , dir , newFileName) , fileCompress(newContent))
 
           }   
+  function lsTreeParss(hashName)
+          {
+               let file = ObDecompress(hashName)
+               
+                
+               let indexOfNull = file.indexOf(0)
+               
+               file = file.slice(indexOfNull + 1)
+               let parssed = []
 
+               while(file.length)
+                    {
+                        
+                         let indexOfSpace = file.indexOf(32)
+                         let mode = file.slice(0 , indexOfSpace).toString()
+                         
+                         file = file.slice(indexOfSpace + 1) 
+
+                         let indexOfNull = file.indexOf(0)
+                         let fileName = file.slice(0 , indexOfNull).toString()
+
+                         file = file.slice(indexOfNull + 1)
+
+                         let shaByteEncoded = file.slice(0 , 20)
+                         file = file.slice(20)
+
+                         let type = 'blob'
+                         if(parseInt(mode , 10) == 40000)
+                              type = 'tree'
+
+                         parssed.push([mode , type , shaByteEncoded.toString('hex') , fileName])
+
+                    }
+
+                   parssed.sort((a , b) => {   a[1].charCodeAt(0)    -   b[1].charCodeAt(0)}) 
+
+                   return parssed ; 
+               
+          }
+
+  function lsTree(hashName)
+          {
+               let parssed = lsTreeParss(hashName)
+
+               for(let i = 0 ; i < parssed.length ; i++)
+                    console.log(parssed[i][0] , " " , parssed[i][1] , " " , parssed[i][2] , "  ", parssed[i][3])
+
+          }  
+          
+   function lsTreeNameOnly(hashName)
+          {
+               let parssed = lsTreeParss(hashName)
+
+               for(let i = 0 ; i  <  parssed.length ; i++)
+                         console.log(parssed[i][3])
+          }       
    function gitIsExist()
           {
                let gitPath = path.join(process.cwd()  , ".git")
@@ -123,4 +195,9 @@ console.error("Logs from your program will appear here!");
 
                if(!fs.existsSync(gitPath) || !fs.lstatSync(gitPath).isDirectory())
                     throw new Error("there is no git repo , try to run myGit init first !")
-          }       
+          }
+          
+      
+          
+          
+   
