@@ -17,11 +17,13 @@ console.error("Logs from your program will appear here!");
      catFile(process.argv[3] , process.argv[4]); 
      break;
    case "hash-object":
-     hashObject(process.argv[3] , process.argv[4]);     
+     hashBlobObject(process.argv[3] , process.argv[4]);     
      break;    
    case "ls-tree":
      lsTree(process.argv[3] , process.argv[4])
      break;
+   case "write-tree":
+     writeTree(process.cwd())
    default:
      throw new Error(`Unknown command ${command}`);
  }
@@ -62,15 +64,19 @@ console.error("Logs from your program will appear here!");
                     default:
                          lsTree(hashName)
                }
-     }       
- function hashObject(option , fileName)
+     }
+
+ function hashBlobObject(option , fileName)
      {
           gitIsExist()
+          
+          
+          const fullPath = path.join(process.cwd() , fileName)
 
           switch(option)
                {
                     case "-w" :
-                         hashObjectWrite(fileName)
+                         hashBlobObjectWrite(fullPath)
                     break ; 
 
                     default : 
@@ -109,11 +115,11 @@ console.error("Logs from your program will appear here!");
   
           }
 
-  function hashObjectWrite(fileName)
+  function hashBlobObjectWrite(fullPath)
           {
-               const filePath = path.join(process.cwd() , fileName)
                
-               const content   = fs.readFileSync(filePath)
+               
+               const content   = fs.readFileSync(fullPath)
 
                const newContent = Buffer.concat([
                     Buffer.from("blob "+content.length+"\0") , 
@@ -129,7 +135,7 @@ console.error("Logs from your program will appear here!");
                process.stdout.write(dir+newFileName)
                fs.mkdirSync(path.join(process.cwd(), ".git", "objects" , dir), { recursive: true });                         
                fs.writeFileSync(path.join(process.cwd() , ".git" , "objects" , dir , newFileName) , fileCompress(newContent))
-
+               return dir + newFileName
           }   
   function lsTreeParss(hashName)
           {
@@ -186,7 +192,76 @@ console.error("Logs from your program will appear here!");
 
                for(let i = 0 ; i  <  parssed.length ; i++)
                          console.log(parssed[i][3])
-          }       
+          }
+          
+     function writeTree(currDir)
+          {
+               let entries = fs.readdirSync(currDir , { withFileTypes: true })
+               
+               let buff = Buffer.alloc(0);
+
+               for(const entry of entries)
+                    {
+                         let mode , name , shaBinary 
+                         
+                         name = entry.name
+                         const fullPath = path.join(currDir , name)
+                         
+                         if(name == '.git')
+                              continue 
+
+                         if(entry.isDirectory)
+                              {
+                                   writeTree(fullPath)
+                                   mode = "040000"
+                              }
+                              
+                         else {
+                                   if(entry.isSymbolicLink)
+                                        mode = "120000"
+
+                                   else if(isExe(fullPath))
+                                         mode = "100755"
+                              
+
+                                   else 
+                                         mode = "100644"
+
+
+                                   shaBinary = hashBlobObjectWrite(fullPath)
+
+                                   
+                              }
+                        
+                              
+                              let newBuff = Buffer.concat([
+                                        Buffer.from(mode , 'utf-8') , 
+                                        Buffer.from(' ' , 'utf-8') , 
+                                        Buffer.from(name , 'utf-8') , 
+                                        Buffer.from('\0' , 'utf-8') , 
+                                        Buffer.from(shaBinary , 'hex') 
+                              ])
+                              
+                              buff = Buffer.concat(buff , newBuff)
+                              
+
+                    }
+
+                    let length = buff.length 
+                    buff = Buffer.concat([
+                              Buffer.from(`tree ${length}\0` , 'utf-8') , 
+                              buff
+                    ])
+
+                    const newFullHashDirName = crypto.createHash('sha1')
+                                        .update(newContent)
+                                        .digest('hex')
+
+                    const dir = newFullHashDirName.slice(0 , 2)
+                    const treeHashName = newFullHashDirName.slice(2)
+                    fs.mkdirSync(path.join(process.cwd(), ".git", "objects" , dir), { recursive: true });                         
+                    fs.writeFileSync(path.join(process.cwd() , ".git" , "objects" , dir , treeHashName) , fileCompress(buff))
+          }     
    function gitIsExist()
           {
                let gitPath = path.join(process.cwd()  , ".git")
@@ -196,6 +271,17 @@ console.error("Logs from your program will appear here!");
                if(!fs.existsSync(gitPath) || !fs.lstatSync(gitPath).isDirectory())
                     throw new Error("there is no git repo , try to run myGit init first !")
           }
+
+   function isExe(filePath)
+          {
+          
+            const stats = fs.statSync(filePath);
+            const mode = stats.mode;
+
+            const isExec = (mode & 0o111) !== 0; // Owner, group, or others have exec permission
+            return isExec;
+
+          }       
           
       
           
