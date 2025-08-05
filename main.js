@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const zlib = require('zlib');
 const crypto = require('crypto');
-
+const { execSync } = require('child_process');
 // You can use print statements as follows for debugging, they'll be visible when running tests.
 console.error("Logs from your program will appear here!");
 
@@ -25,6 +25,12 @@ console.error("Logs from your program will appear here!");
    case "write-tree":
      writeTree(process.cwd())
      break;
+   case "config" : 
+     editConfigFile(process.argv[3] ,  process.argv[4])
+     break;   
+   case "commit-tree" : 
+     commitTree(process.argv[3] , process.argv[4] , process.argv[5] , process.argv[6] ,process.argv[7])
+     break;
    default:
      throw new Error(`Unknown command ${command}`);
  }
@@ -38,6 +44,7 @@ console.error("Logs from your program will appear here!");
    console.log("Initialized git directory");
  }
 
+ 
  function catFile(option , obName)
      {
           gitIsExist()
@@ -52,6 +59,77 @@ console.error("Logs from your program will appear here!");
                          throw new Error(`unkonwn option : ${option}`)
                }     
      }
+  function editConfigFile(option , data)
+     {
+          gitIsExist()
+
+          switch(option)
+               {
+                    case "user.name" : 
+                         editUserName(data) ; 
+                    break ; 
+
+                    case "user.email" : 
+                         editUserEmail(data)
+                    break ; 
+                    
+                    default : 
+                         throw new Error(`unknown option ${option}`)
+               }
+     }   
+
+  function editUserName(data)
+     {
+          const configPath = path.join(process.cwd() , '.git' , 'config')
+
+          if(!fs.existsSync(configPath))
+               fs.writeFileSync(configPath , "")
+
+          const fileContent  = fs.readFileSync(configPath , 'utf-8')
+          let config = parseGitConfig(fileContent);
+
+          if(!config.user)
+               {
+                    config.user = {}     
+                    config.core = {}
+               }
+               
+          
+          
+
+          config.user.name = data 
+          
+          const updatedContent = serializeConfig(config);
+          fs.writeFileSync(configPath, updatedContent, 'utf-8');
+
+          
+     }
+
+  function editUserEmail(data)
+     {
+          const configPath = path.join(process.cwd() , '.git' , 'config')
+
+          if(!fs.existsSync(configPath))
+               fs.writeFileSync(configPath , "")
+
+          const fileContent  = fs.readFileSync(configPath , 'utf-8')
+          let config = parseGitConfig(fileContent);
+
+          if(!config.user)
+               {
+                    config.user = {}     
+                    config.core = {}
+               }
+               
+          
+          
+
+          config.user.email = data 
+          
+          const updatedContent = serializeConfig(config);
+          fs.writeFileSync(configPath, updatedContent, 'utf-8');
+   
+     }   
   function lsTree(hashName , option)
      {
           gitIsExist()
@@ -81,6 +159,72 @@ console.error("Logs from your program will appear here!");
                          throw Error(`unknown option ${option}`)     
                }
      }    
+ function commitTree(shaTree , firstOption , data1 ,secondOption , data2)
+     {
+          gitIsExist()
+          
+
+          if(firstOption == '-p')
+          {
+               if(secondOption != '-m')
+                    throw new Error(`unknown option ${secondOption} , should be -m`)
+
+               var shaParentCommit = data1
+               var msg  = data2
+               
+               
+          }
+               
+
+          else
+          {
+               var msg = data1
+               if(firstOption != '-m')
+                    throw new Error(`unknown option ${firstOption} , should be -m` )
+          }     
+               
+
+          createCommitObject(shaTree , shaParentCommit , msg , firstOption)
+
+     }    
+
+ function createCommitObject(shaTree , shaParentCommit , msg  , firstOption)
+     {
+          let fileContent = `tree ${shaTree}\n`
+
+          if(firstOption == '-p')
+               fileContent+= `parent ${shaParentCommit}\n`
+          
+          const configPath = path.join(process.cwd() , '.git' , 'config')
+          const configContent = fs.readFileSync(configPath, 'utf-8')
+          let config = parseGitConfig(configContent)
+          
+          const timeStamp = execSync('date +%s').toString().trim()
+          const timeZone  = execSync('date +%z').toString().trim()
+
+          fileContent+= `author ${config.user.name} ${config.user.email} ${timeStamp} ${timeZone}\n` 
+
+          fileContent+= `committer ${config.user.name} ${config.user.email} ${timeStamp} ${timeZone}\n \n`
+
+          fileContent+= `${msg}`
+
+          const length = fileContent.length
+
+          const fullFileContent = `commit ${length}\0${fileContent}`
+          
+          const fullFileName = crypto.createHash('sha-1')
+                                     .update(fullFileContent)
+                                     .digest('hex')
+
+          const dir = fullFileName.slice(0 , 2)
+          const fileName = fullFileName.slice(2)
+          
+          fs.mkdirSync(path.join(process.cwd() , '.git' , 'objects' , dir) , {recursive : true})
+
+          fs.writeFileSync(path.join(process.cwd() , '.git' , 'objects' , dir , fileName) , fileCompress(fullFileContent))
+
+          console.log(fullFileName)
+     }
  function hashBlobObject(option , fileName)
      {
           gitIsExist()
@@ -323,7 +467,50 @@ console.error("Logs from your program will appear here!");
 
           }       
           
-      
-          
+ function parseGitConfig(content)
+          {
+                   const lines = content.split('\n');
+                   let currentSection = null;
+                   const config = {};
+
+                    for (let line of lines) {
+                         line = line.trim();
+
+        
+                    if (!line || line.startsWith('#')) continue;
+
+        
+                    const sectionMatch = line.match(/^\[(.+?)\]$/);
+                    if (sectionMatch) {
+                         currentSection = sectionMatch[1];
+                         config[currentSection] = {};
+                          continue;
+                          }
+
+        
+                    const kvMatch = line.match(/^([a-zA-Z0-9]+)\s*=\s*(.+)$/);
+                     if (kvMatch && currentSection) {
+                         const key = kvMatch[1];
+                         const value = kvMatch[2];
+                         config[currentSection][key] = value;
+                         }
+                 }
+
+               return config;
+          }
+     
+     function serializeConfig(config) {
+               let result = '';
+               for (const section in config) {
+                    result += `[${section}]\n`;
+                    for (const key in config[section]) {
+                         result += `    ${key} = ${config[section][key]}\n`;
+                    }
+                    result += `\n`;     
+               }
+
+               return result.trim() + '\n';
+}
+     
           
    
